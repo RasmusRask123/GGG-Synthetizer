@@ -1,0 +1,656 @@
+###########################
+### GGG-Synthetizer app ###
+###########################
+
+################
+### Packages ###
+################
+library(shiny)
+library(shinydashboard)
+library(ggplot2)
+library(mvtnorm)
+library(MCMCpack)
+library(MASS)
+library(viridis)
+library(LaplacesDemon)  
+
+#######################################
+# core functions (p = 2 throughout) ###
+#######################################
+posterior_params <- function(X_data, mu0, kappa0, nu0, lambda0, p_df = 2) {
+  stopifnot(ncol(X_data) == 2, length(mu0) == 2, all(dim(lambda0) == c(2, 2)))
+  n        <- nrow(X_data)
+  xbar     <- colMeans(X_data)
+  kappa_n  <- kappa0 + n
+  nu_n     <- nu0 + n
+  mu_n     <- (kappa0 / (kappa0 + n)) * mu0 + (n / (kappa0 + n)) * xbar
+  S        <- t(X_data - xbar) %*% (X_data - xbar)
+  Lambda_n <- lambda0 + S + ((kappa0 * n) / (kappa_n)) * tcrossprod(xbar - mu0)
+  df0      <- nu_n - p_df + 1
+  Sigma_t0 <- ((kappa_n + 1) / (kappa_n * (nu_n - p_df + 1))) * Lambda_n
+  list(mu_n = mu_n, kappa_n = kappa_n, nu_n = nu_n, Lambda_n = Lambda_n, DOF = df0, scale = Sigma_t0)
+}
+
+Initial_value_fkt <- function(Z_data_list, mu0, kappa0) {
+  
+  n_z <- sapply(Z_data_list, nrow)
+  
+  zbar_list <- lapply(Z_data_list, colMeans)
+  
+  Zbars <- do.call(cbind, zbar_list)
+  
+  weighted_sum <- Zbars %*% n_z
+  
+  x0c <- (kappa0 * mu0 + weighted_sum) / (kappa0 + sum(n_z))
+  as.numeric(x0c)
+}
+
+Updated_Z_parameters <- function(mu_n, kappa_n, nu_n, Lambda_n, Z_data) {
+  m <- nrow(Z_data)
+  zbar <- colMeans(Z_data)
+  S_Z <- t(Z_data - zbar) %*% (Z_data - zbar)
+  
+  kappa_npp <- kappa_n + m
+  nu_npp    <- nu_n + m
+  
+  dz        <- zbar - mu_n
+  mu_npp <- (kappa_n * mu_n + m * zbar) / kappa_npp
+  Lambda_npp <- Lambda_n + S_Z + ((kappa_n * m) / (kappa_npp + m)) * tcrossprod(dz)
+  
+  list(kappa_npp = kappa_npp,
+       nu_npp = nu_npp,
+       Lambda_npp = Lambda_npp,
+       mu_npp = mu_npp,
+       m = m)
+}
+
+GGG_syntheticData_PD_fkt <- function(DF_mat, n_synth = 100, mu0, kappa0, nu0, lambda0, n_dataset = 1) {
+  
+  post_full <- posterior_params(X_data = DF_mat, mu0 = mu0, kappa0 = kappa0, nu0 = nu0, lambda0 = lambda0, p_df = 2)
+  
+  
+  Z_list <- lapply(seq_len(n_dataset), function(x) {
+    
+    Sigma_draw <- MCMCpack::riwish(v = post_full$nu_n, S = post_full$Lambda_n)
+    Sigma_draw <- LaplacesDemon::as.positive.definite(Sigma_draw)
+    mu_draw    <- MASS::mvrnorm(n = 1, mu = post_full$mu_n, Sigma = Sigma_draw / post_full$kappa_n)
+    Z <- MASS::mvrnorm(n = n_synth,
+                       mu = mu_draw,
+                       Sigma = Sigma_draw,
+                       tol = 1e-12)
+    
+    colnames(Z) <- c("V1","V2")
+    
+    list(Z = Z,
+         Sigma_draw = Sigma_draw,
+         mu_draw = mu_draw)
+  })
+  
+  list(S = post_full, Z = Z_list)
+}
+
+log_marglik_Z_given_Dprime <- function(m, kappa_np, kappa_npp, nu_np, nu_npp, lambda_np, lambda_npp){
+  R_np <- chol(lambda_np)
+  R_npp <- chol(lambda_npp)
+  log_lambda_np <- 2 * sum(log(diag(R_np)))
+  log_lambda_npp <- 2 * sum(log(diag(R_npp)))
+  p <- 2
+  
+  log_mvgamma <- function(a, p){
+    (p * (p - 1) / 4) * log(pi) + sum(lgamma(a + (1 - seq_len(p)) / 2))
+    }
+  
+  val <- -((m * p) / 2) * log(2 * pi) +
+    (p / 2) * (log(kappa_np) - log(kappa_npp)) +
+    (1 / 2) * (nu_np * log_lambda_np - nu_npp * log_lambda_npp) +
+    log_mvgamma(a = nu_npp / 2, p = p) - log_mvgamma(a = nu_np / 2, p = p)
+  return(val)
+}
+
+log_pZ_given_x <- function(D_minus_i, x_i, Z_list, mu0, kappa0, nu0, lambda0, post_0) {
+  
+  Dprime <- rbind(D_minus_i, matrix(x_i, nrow = 1))
+  
+  
+  post_XP <- posterior_params(X_data = Dprime,
+                              mu0 = mu0,
+                              kappa0 = kappa0,
+                              nu0 = nu0,
+                              lambda0 = lambda0,
+                              p_df = 2)
+  
+  vals <- lapply(Z_list, function(Zk){
+    post_XZP <- Updated_Z_parameters(mu_n = post_XP$mu_n,
+                                     kappa_n = post_XP$kappa_n,
+                                     nu_n = post_XP$nu_n,
+                                     Lambda_n = post_XP$Lambda_n,
+                                     Z_data = Zk)
+    log_marglik_Z_given_Dprime(m = post_XZP$m,
+                               kappa_np = post_XP$kappa_n,
+                               kappa_npp = post_XZP$kappa_npp,
+                               nu_np = post_XP$nu_n,
+                               nu_npp = post_XZP$nu_npp,
+                               lambda_np = post_XP$Lambda_n,
+                               lambda_npp = post_XZP$Lambda_npp)
+  })
+  logprior_x  <- mvtnorm::dmvt(x_i, delta = post_0$mu_n, sigma = post_0$scale, df = post_0$DOF, log = TRUE)
+  vals <- do.call("sum", vals) + logprior_x
+  return(vals)
+}
+
+run_outlier_inference <- function(n_true, n_dataset, n_synth, x_i,
+                                  mu0, kappa0, nu0, lambda0,
+                                  mu0_int, kappa0_int, nu0_int, lambda0_int,
+                                  grid_limits = c(-30, 30), grid_len = 50, seed = 1,mu_true=c(1, 1),Sigma_true=diag(2) * 3) {
+  stopifnot(length(mu0) == 2, all(dim(lambda0) == c(2, 2)), length(x_i) == 2)
+  set.seed(seed)
+  D_minus_i <- MASS::mvrnorm(n_true, mu = mu_true, Sigma = Sigma_true)
+  X_full  <- rbind(x_i, D_minus_i)
+  
+  GGG_list <- GGG_syntheticData_PD_fkt(DF_mat = X_full,
+                                       n_synth = n_synth,
+                                       mu0 = mu0,
+                                       kappa0 = kappa0,
+                                       nu0 = nu0,
+                                       lambda0 = lambda0,
+                                       n_dataset = n_dataset)
+  
+  
+  Z_list <- lapply(seq_len(n_dataset), function(ix) GGG_list$Z[[ix]]$Z)
+  
+  Z_all <- do.call(rbind, Z_list)
+  colnames(Z_all) <- c("V1", "V2")
+  post_0 <- posterior_params(X_data = D_minus_i,
+                             mu0 = mu0_int,
+                             kappa0 = kappa0_int,
+                             nu0 = nu0_int,
+                             lambda0 = lambda0_int,
+                             p_df = 2)
+  
+  x1_seq <- seq(grid_limits[1], grid_limits[2], length.out = grid_len)
+  x2_seq <- seq(grid_limits[1], grid_limits[2], length.out = grid_len)
+  grid_x <- expand.grid(x1 = x1_seq, x2 = x2_seq)
+  scores <- apply(grid_x, 1, function(r) {
+    log_pZ_given_x(D_minus_i = D_minus_i,
+                   x_i = r,
+                   Z_list = Z_list,
+                   mu0 = mu0_int,
+                   kappa0 = kappa0_int,
+                   nu0 = nu0_int,
+                   lambda0 = lambda0_int,
+                   post_0 = post_0)
+  })
+  grid_df <- transform(grid_x, score = scores)
+  
+  init_1 <- Initial_value_fkt(Z_data_list = Z_list,
+                              mu0 = mu0_int,
+                              kappa0 = kappa0_int)
+  optim_res <- optim(par = init_1, fn = function(par) -log_pZ_given_x(D_minus_i = D_minus_i,
+                                                                      x_i = par,
+                                                                      Z_list = Z_list,
+                                                                      mu0 = mu0_int,
+                                                                      kappa0 = kappa0_int,
+                                                                      nu0 = nu0_int,
+                                                                      lambda0 = lambda0_int,
+                                                                      post_0 = post_0),
+                     method = "L-BFGS-B")
+  L2_norm <- as.numeric(dist(rbind(t(x_i), t(optim_res$par))))
+  optim_df <- data.frame(V1 = optim_res$par[1], V2 = optim_res$par[2])
+  
+  list(
+    grid_score = grid_df,
+    optim_par = optim_res$par,
+    optim_df = optim_df,
+    L2_norm = L2_norm,
+    x_true = x_i,
+    D_minus_i = as.data.frame(D_minus_i),
+    Z_all = as.data.frame(Z_all)
+  )
+}
+
+#########################
+# UI (shinydashboard) ###
+#########################
+ui <- dashboardPage(
+  header = dashboardHeader(title = "GGG Synthesizer (p = 2)", titleWidth = 300),
+  sidebar = dashboardSidebar(
+    width = 200,
+    sidebarMenu(
+      menuItem("GGG outlier inference", tabName = "ggg"),
+      menuItem("Information", tabName = "info")
+    )
+  ),
+  body = dashboardBody(
+    tabItems(
+      tabItem(
+        tabName = "ggg",
+        fluidRow(
+          column(width = 4,
+                 fluidRow(
+                   tabBox(width=10,
+                          
+                          ### Data ----
+                          tabPanel(title = "Data",
+                                   status="Primary",
+                                   solidHeader=TRUE,
+                                   tags$h5("True data parameters",
+                                           style = "font-weight:bold; margin-top:10px; margin-bottom:5px;"),
+                                   
+                                   fluidRow(
+                                     column(width = 3,
+                                            numericInput(inputId = "mu_true1",
+                                                         label =  HTML("&mu;<sub>true,1</sub>"),
+                                                         value = 1,
+                                                         step = 1)),
+                                     column(width = 3,
+                                            numericInput(inputId = "mu_true2",
+                                                         label =  HTML("&mu;<sub>true,2</sub>"),
+                                                         value = 1,
+                                                         step = 1))
+                                   ),
+                                   
+                                   div(class = "mt-2", tags$small(HTML("&Sigma;<sub>true</sub> (2×2, symmetric)"))),
+                                   
+                                   fluidRow(
+                                     column(width = 3,
+                                            numericInput(inputId = "S11",
+                                                         label =  HTML("&Sigma;<sub>11</sub>"),
+                                                         value = 3,
+                                                         step = 0.5)),
+                                     column(width = 3,
+                                            numericInput(inputId = "S12",
+                                                         label =  HTML("&Sigma;<sub>12</sub> = &Sigma;<sub>21</sub>"),
+                                                         value = 0,
+                                                         step = 0.5)),
+                                     column(width = 3,
+                                            numericInput(inputId = "S22",
+                                                         label =  HTML("&Sigma;<sub>22</sub>"),
+                                                         value = 3,
+                                                         step = 0.5))
+                                   ),
+                                   tags$hr(style = "border-top: 1px solid #ccc; margin-top:5px; margin-bottom:10px;"),
+                                   
+                                   # --- small title and line ---
+                                   
+                                   tags$h5("Outlier coordinates",
+                                           style = "font-weight:bold; margin-top:0; margin-bottom:5px;"),
+                                   fluidRow(
+                                     column(width = 3,
+                                            numericInput(inputId = "x1",
+                                                         label = "X1",
+                                                         value = 20,
+                                                         step = 1)),
+                                     column(width = 3,
+                                            numericInput(inputId = "x2",
+                                                         label = "X2",
+                                                         value = 20,
+                                                         step = 1))
+                                   ), 
+                                   # line separator
+                                   tags$hr(style = "border-top: 1px solid #ccc; margin-top:5px; margin-bottom:10px;"),
+                                   numericInput(inputId = "n_true",
+                                                label =  "Number of true points",
+                                                value = 100,
+                                                min = 1,
+                                                step = 10),
+                                   
+                                   numericInput(inputId = "n_k",
+                                                label = "Number of synthetic datasets",
+                                                value = 3,
+                                                min = 1,
+                                                step = 1),
+                                   numericInput(inputId = "n_synth",
+                                                label = "Rows per synthetic dataset",
+                                                value = 100,
+                                                min = 1,
+                                                step = 10)  ,
+                                   numericInput(inputId = "seed",
+                                                label = "seed",
+                                                value = 123)    
+                                   ),
+                          ##############
+                          ### Priors ###
+                          ##############
+                          tabPanel(title = "Priors",
+                                   status="Primary",
+                                   solidHeader=TRUE,
+                                   fluidRow(
+                                     column(width = 3,
+                                            numericInput(inputId = "mu1",
+                                                         label =HTML("&mu;<sub>0,1</sub>"),
+                                                         value = 0)),
+                                     column(width = 3,
+                                            numericInput(inputId = "mu2",
+                                                         label =  HTML("&mu;<sub>0,2</sub>"),
+                                                         value = 0))  
+                                   ),
+                                   numericInput(inputId = "kappa0",
+                                                label =  HTML("&kappa;<sub>0</sub>"),
+                                                value = 1,
+                                                min = 1,
+                                                step = 1),
+                                   numericInput(inputId = "nu0",
+                                                label =  HTML("&nu;<sub>0</sub>"),
+                                                value = 2,
+                                                min = 2,
+                                                step = 1),
+                                   div(
+                                     class = "mt-2",
+                                     HTML('<b><i><span style="font-size: 12px;">&Lambda;<sub>0</sub></span></i></b> <small>(2×2, symmetric)</small>')
+                                     
+                                   ),
+                                   fluidRow(
+                                     column(width = 3,
+                                            numericInput(inputId = "L11",
+                                                         label =  HTML("&Lambda;<sub>11</sub>"),
+                                                         value = 1,
+                                                         step = 0.1)),
+                                     column(width = 3,
+                                            numericInput(inputId = "L12",
+                                                         label =  HTML("&Lambda;<sub>12</sub> = &Lambda;<sub>21</sub>"),
+                                                         value = 0,
+                                                         step = 0.1)),
+                                     column(width = 3,
+                                            numericInput(inputId = "L22",
+                                                         label =  HTML("&Lambda;<sub>22</sub>"),
+                                                         value = 1,
+                                                         step = 0.1))
+                                   )
+                                   ),
+                          ########################
+                          ### Intruder priors ####
+                          ########################
+                          
+                          tabPanel(title = "Intruder priors",
+                                   status="Primary",
+                                   solidHeader=TRUE,
+                                   fluidRow(
+                                     column(width = 3,
+                                            numericInput(inputId = "mu1_int",
+                                                         label =HTML("&mu;<sub>0,1</sub>"),
+                                                         value = 0)),
+                                     column(width = 3,
+                                            numericInput(inputId = "mu2_int",
+                                                         label =  HTML("&mu;<sub>0,2</sub>"),
+                                                         value = 0))  
+                                   ),
+                                   numericInput(inputId = "kappa0_int",
+                                                label =  HTML("&kappa;<sub>0</sub>"),
+                                                value = 1,
+                                                min = 1,
+                                                step = 1),
+                                   numericInput(inputId = "nu0_int",
+                                                label =  HTML("&nu;<sub>0</sub>"),
+                                                value = 2,
+                                                min = 2,
+                                                step = 1),
+                                   div(
+                                     class = "mt-2",
+                                     HTML('<b><i><span style="font-size: 12px;">&Lambda;<sub>0</sub></span></i></b> <small>(2×2, symmetric)</small>')
+                                     
+                                   ),
+                                   fluidRow(
+                                     column(width = 3,
+                                            numericInput(inputId = "L11_int",
+                                                         label =  HTML("&Lambda;<sub>11</sub>"),
+                                                         value = 1,
+                                                         step = 0.1)),
+                                     column(width = 3,
+                                            numericInput(inputId = "L12_int",
+                                                         label =  HTML("&Lambda;<sub>12</sub> = &Lambda;<sub>21</sub>"),
+                                                         value = 0,
+                                                         step = 0.1)),
+                                     column(width = 3,
+                                            numericInput(inputId = "L22_int",
+                                                         label =  HTML("&Lambda;<sub>22</sub>"),
+                                                         value = 1,
+                                                         step = 0.1))
+                                   )
+                          ),
+                          ####################
+                          ### Grid scearch ### 
+                          ####################
+                          tabPanel(title="Grid scearch",
+                                   status="Primary",
+                                   solidHeader=TRUE,
+                                   sliderInput(inputId = "grid_range",
+                                                 label =  " Grid scearch space (Range of X1 and X2)",
+                                                 min = -100,
+                                                 max = 100,
+                                                 value = c(-30, 30),
+                                                 step = 1,
+                                               width = "90%"),
+                                   sliderInput(inputId = "grid_len",
+                                               label =  "Grid points per axis",
+                                               min = 10,
+                                               max = 100,
+                                               value = 30,
+                                               step = 5,
+                                               width = "90%"),
+                                   ),
+                          
+                 ),
+                box(width = 10,
+                    title = "Run experiment",
+                    status = "primary",
+                    solidHeader = TRUE,
+                    actionButton(inputId = "run_infer",
+                                 label =  "Run inference",),
+                     
+                 )
+          ),
+          
+        ),
+        column(width = 8,
+               box(width = 12,
+                   title = "Outlier inference",
+                   status = "primary",
+                   solidHeader = TRUE,
+               plotOutput("grid_plot", height = "85vh", width = "100%"))
+               ),
+        ),
+        
+    ),
+    #######################
+    ### Information tab ###
+    #######################
+    tabItem(
+      tabName = "info",
+      h3("Information"),
+      p("This tab can contain documentation and references for the GGG synthesizer.")
+    )
+    )
+  )
+)
+
+#------------------------------
+# server
+#------------------------------
+server <- function(input, output, session) {
+  
+  
+  get_mu_true <- reactive(c(input$mu_true1, input$mu_true2))
+  
+  get_Sigma_true <- reactive({
+    S <- matrix(c(input$S11, input$S12, input$S12, input$S22), nrow = 2, byrow = TRUE)
+    #LaplacesDemon::as.positive.definite(S)
+  })
+  
+  
+  
+  get_mu0 <- reactive(c(input$mu1, input$mu2))
+  get_mu0_int <- reactive(c(input$mu1_int, input$mu2_int))
+  
+  get_L0  <- reactive({
+    L <- matrix(c(input$L11, input$L12, input$L12, input$L22), nrow = 2, byrow = TRUE)
+    LaplacesDemon::as.positive.definite(L)
+  })
+  get_L0_int  <- reactive({
+    L <- matrix(c(input$L11_int, input$L12_int, input$L12_int, input$L22_int), nrow = 2, byrow = TRUE)
+    LaplacesDemon::as.positive.definite(L)
+  })
+  
+  infer <- eventReactive(input$run_infer, {
+    mu0 <- get_mu0()
+    L0  <- get_L0()
+    mu0_int <- get_mu0_int()
+    L0_int  <- get_L0_int()
+    
+    
+    x_i <- c(input$x1, input$x2)
+    run_outlier_inference(
+      n_true   = input$n_true,
+      n_dataset= input$n_k,
+      n_synth  = input$n_synth,
+      x_i      = x_i,
+      mu0      = mu0,
+      kappa0   = input$kappa0,
+      nu0      = input$nu0,
+      lambda0  = L0,
+      mu0_int=mu0_int,
+      kappa0_int=input$kappa0_int,
+      nu0_int=input$nu0_int,
+      lambda0_int=L0_int,
+      grid_limits = input$grid_range,
+      grid_len = input$grid_len,
+      seed     = input$seed,
+      mu_true  = get_mu_true(),
+      Sigma_true = get_Sigma_true()
+    )
+  }, ignoreInit = TRUE)
+  
+  output$grid_plot <- renderPlot({
+    req(infer())
+    score_sim <- infer()
+    df <- score_sim$grid_score
+    
+    ggplot(df, aes(x = x1, y = x2, fill = score)) +
+      geom_raster(alpha=0.7) +
+      geom_contour(aes(z = score),
+                   bins = 20,
+                   color = "white",
+                   linewidth = 0.25,
+                   alpha = 0.9) +
+      # overlay: synthetic data (all draws stacked)
+      geom_point(data = score_sim$Z_all,
+                 aes(x = V1,
+                     y = V2,
+                     color = "Synthetic data"),
+                 alpha = 0.9,
+                 size = 2,
+                 inherit.aes = FALSE) +
+      # overlay: true data
+      geom_point(data = as.data.frame(score_sim$D_minus_i),
+                 aes(x = V1,
+                     y = V2,
+                     color = "True data"),
+                 size = 2,
+                 inherit.aes = FALSE) +
+      # overlay: optim guess
+      geom_point(
+        data = score_sim$optim_df,
+        aes(x = V1, y = V2, color = "Optim guess"),
+        size = 5,
+        shape = 4,
+        stroke = 1.2,
+        inherit.aes = FALSE
+      ) +
+      geom_text(
+        data = score_sim$optim_df,
+        aes(
+          x = V1+1,
+          y = V2+1,
+          label = paste0("(", round(V1, 1), ", ", round(V2, 1), ")")
+        ),
+        color = "#0073C2FF",       # match your JCO blue
+        nudge_x = 1.5,             # horizontal offset so it doesn’t overlap
+        nudge_y = 1,               # small vertical lift
+        size = 6,                  # readable inside dashboard
+        fontface = "bold",
+        inherit.aes = FALSE
+      )+
+      # overlay: actual outlier
+      geom_point(data = data.frame(V1 = score_sim$x_true[1], V2 = score_sim$x_true[2]),
+                 aes(x = V1,
+                     y = V2,
+                     color = "Actual outlier"),
+                 size = 4,
+                 shape = 3,
+                 stroke = 1.2,
+                 inherit.aes = FALSE) +
+      geom_text(
+        data = data.frame(V1 = score_sim$x_true[1], V2 = score_sim$x_true[2]),
+        aes(
+          x = V1+1,
+          y = V2+1,
+          label = paste0("(", round(V1, 1), ", ", round(V2, 1), ")")
+        ),
+        color = "#CD534CFF",       
+        nudge_x = 1.5,             
+        nudge_y = 1,               
+        size = 6,                  
+        fontface = "bold",
+        inherit.aes = FALSE
+      )+
+      coord_fixed() +
+      scale_fill_viridis_c(
+        #option = "C",
+        begin = 0.2, end = 0.9) +
+      scale_color_manual(
+        values = c(
+          "True data"      = "#3B3B3BFF",
+          "Synthetic data" = "#EFC000FF",
+          "Optim guess"    = "#0073C2FF",
+          "Actual outlier" = "#CD534CFF"
+        ) 
+        ) +
+      labs(title = "Posterior landscape",
+           x = "X1",
+           y = "X2",
+           fill = "Logscore",
+           color = "Points") +
+      guides(
+        color = guide_legend(
+          override.aes = list(size = 6, shape = 16),  # bigger points in legend
+          keyheight = unit(1.2, "lines")              # space between legend keys
+        ),
+        fill = guide_colorbar(
+          barheight = unit(10, "lines"),              
+          barwidth  = unit(0.8, "lines"),
+          label.theme = element_text(size = 12),
+          title.theme = element_text(size = 14)
+        )
+      ) +
+      theme_minimal(base_size = 22) +
+      theme(
+        legend.position = "right",
+        legend.title = element_text(size = 18),
+        legend.text = element_text(size = 14),
+        legend.key.width = unit(1.5, "lines"),
+        legend.key.height = unit(1.5, "lines"),
+        plot.title = element_text(face = "bold", size = 26, hjust = 0.5)
+      )
+  })
+  
+  output$optim_text <- renderPrint({
+    req(infer())
+    res <- infer()
+    cat("Optimum:", paste(round(res$optim_par, 4), collapse = ", "), "\n",
+        "L2:", round(res$L2_norm, 4), "\n",
+        "True x:", paste(round(res$x_true, 4), collapse = ", "), "\n")
+  })
+  
+  output$dl_optim <- downloadHandler(
+    filename = function() paste0("optim_result_", Sys.Date(), ".csv"),
+    content = function(file) {
+      res <- infer()
+      out <- data.frame(x_true_1 = res$x_true[1], x_true_2 = res$x_true[2],
+                        opt_1 = res$optim_par[1], opt_2 = res$optim_par[2],
+                        L2 = res$L2_norm)
+      write.csv(out, file, row.names = FALSE)
+    }
+  )
+}
+
+# Run app
+shinyApp(ui, server)
