@@ -1,3 +1,5 @@
+---
+
 ```markdown
 # GGG-Synthesizer
 
@@ -7,9 +9,7 @@ The tool is designed for methodological experimentation, teaching, and rapid eva
 
 ## Core functionality
 
-The application provides:
-
-### 1. Posterior inference  
+### 1. Posterior inference
 Given real data \(X = \{\mathbf{x}_1,\dots,\mathbf{x}_n\}\) and GIW hyperparameters  
 \((\mu_0, \kappa_0, \Lambda_0, \nu_0)\), the app computes the conjugate posterior  
 \[
@@ -17,26 +17,25 @@ Given real data \(X = \{\mathbf{x}_1,\dots,\mathbf{x}_n\}\) and GIW hyperparamet
 \]
 in closed form. Posterior parameters are displayed interactively.
 
-### 2. Synthetic data generation  
+### 2. Synthetic data generation
 - Users choose the number of synthetic datasets \(n_k\) and the number of posterior draws \(n_\theta\).  
 - Synthetic datasets are generated from the posterior predictive Student-t distribution.  
 - All generated data can be downloaded.
 
-### 3. Disclosure-risk evaluation  
+### 3. Disclosure-risk evaluation
 Implements the closed-form identification-risk expression derived for the GGG framework:
-- Computes the distance measure  
-  \(\mathcal{D}_s(\mathbf{x}^c_s, \mathbf{x}_i)\)  
+- Computes the distance measure \(\mathcal{D}_s(\mathbf{x}^c_s, \mathbf{x}_i)\)  
   between the candidate outlier and synthetic points.
 - Evaluates how the risk behaves as:
-  - dimensionality increases
-  - the number of synthetic datasets increases
-  - the number of posterior draws increases.
+  - dimensionality increases  
+  - the number of synthetic datasets increases  
+  - the number of posterior draws increases  
 - Includes 2D visual illustrations and violin plots.
 
-### 4. Visual diagnostics  
-- Scatterplots for the real data, posterior draws, and synthetic data.  
-- Kernel density overlays.  
-- Interactive selection of dimensions to plot.
+### 4. Visual diagnostics
+- Scatterplots for real data, posterior draws, and synthetic data  
+- Kernel density overlays  
+- Interactive selection of dimensions  
 
 ## File structure
 
@@ -51,7 +50,7 @@ GGG-Synthetizer/
 
 ## Requirements
 
-R packages used in the app (as invoked inside `app.R`):
+Install required packages:
 
 ```r
 install.packages(c(
@@ -94,7 +93,7 @@ The synthesizer is useful for:
 ## Roadmap
 
 * Add mixture synthesizers (Gaussian mixtures, copulas)
-* Add numerical utilities for high-d dimensions
+* Add numerical utilities for high-dimensional settings
 * Add reproducible examples and simulation notebooks
 * Add CI and automated tests
 * Optional: convert to an R package
@@ -103,7 +102,8 @@ The synthesizer is useful for:
 
 MIT License
 
-Copyright (c) [2025] [Rasmus Rask Kragh Jørgensen]
+Copyright (c) 2025
+Rasmus Rask Kragh Jørgensen
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -122,5 +122,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
 ```
+
 
