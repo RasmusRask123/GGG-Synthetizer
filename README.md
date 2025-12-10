@@ -13,8 +13,6 @@ $X = \{\mathbf{x}_1,\dots,\mathbf{x}_n\}$
 and GIW hyperparameters  
 $(\mu_0, \kappa_0, \Lambda_0, \nu_0)$,  
 the app computes the conjugate posterior:
-
-```math
 (\mu^{*}, \Sigma^{*}) \mid X \sim \mathrm{NIW}(\mu_n, \kappa_n, \Lambda_n, \nu_n)
 
 
