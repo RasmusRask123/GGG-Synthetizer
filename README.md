@@ -1,3 +1,6 @@
+Direct answer: here is a precise, project-ready **README.md** based strictly on the real functionality in your `app.R` (GGG Synthesizer: multivariate Gaussian synthesizer with Gaussian–Inverse-Wishart prior, posterior computation, visual diagnostics, synthetic data generation, disclosure-risk evaluation, and interactive Shiny UI).
+
+```markdown
 # GGG-Synthesizer
 
 The GGG-Synthesizer is an R Shiny application that generates multivariate synthetic data from a Gaussian likelihood with a Gaussian–Inverse-Wishart (GIW) prior. The app computes the posterior parameters in closed form, simulates synthetic datasets, and provides analytical disclosure-risk outputs under the “all-but-one” identification framework.
@@ -39,13 +42,14 @@ Implements the closed-form identification-risk expression derived for the GGG fr
 
 ## File structure
 
-
+```
 
 GGG-Synthetizer/
-├─ app.R # Full Shiny application
+├─ app.R                  # Full Shiny application
 ├─ GGG-Synthetizer.Rproj # RStudio project file
-└─ .Rhistory # R command history
+└─ .Rhistory              # R command history
 
+````
 
 ## Requirements
 
@@ -60,48 +64,65 @@ install.packages(c(
   "tidyverse",
   "gridExtra"
 ))
+````
 
-Running the app
+## Running the app
 
 Open the project in RStudio or set the working directory to the repository and run:
 
+```r
 shiny::runApp("app.R")
-
+```
 
 The Shiny interface will open in your browser.
 
-Intended use
+## Intended use
 
 The synthesizer is useful for:
 
-Demonstrating conjugate Bayesian updating for multivariate normals
+* Demonstrating conjugate Bayesian updating for multivariate normals
+* Comparing multiple synthetic-data release strategies
+* Teaching disclosure-risk concepts
+* Experimenting with how dimensionality affects identification risk
+* Reproducing the analytical results from the associated manuscript
 
-Comparing multiple synthetic-data release strategies
+## Limitations
 
-Teaching disclosure-risk concepts
+* Restricted to multivariate Gaussian data
+* GIW prior only
+* No support yet for mixtures or non-Gaussian synthesizers
+* Not packaged as an R package
 
-Experimenting with how dimensionality affects identification risk
+## Roadmap
 
-Reproducing the analytical results from the associated manuscript
+* Add mixture synthesizers (Gaussian mixtures, copulas)
+* Add numerical utilities for high-d dimensions
+* Add reproducible examples and simulation notebooks
+* Add CI and automated tests
+* Optional: convert to an R package
 
-Limitations
+## License
 
-Restricted to multivariate Gaussian data
+MIT License
 
-GIW prior only
+Copyright (c) [2025] [Rasmus Rask Kragh Jørgensen]
 
-No support yet for mixtures or non-Gaussian synthesizers
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-Not packaged as an R package
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-Roadmap
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
-Add mixture synthesizers (Gaussian mixtures, copulas)
-
-Add numerical utilities for high-d dimensions
-
-Add reproducible examples and simulation notebooks
-
-Add CI and automated tests
-
-Optional: convert to an R package
