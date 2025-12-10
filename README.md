@@ -1,5 +1,3 @@
-Direct answer: here is a precise, project-ready **README.md** based strictly on the real functionality in your `app.R` (GGG Synthesizer: multivariate Gaussian synthesizer with Gaussian–Inverse-Wishart prior, posterior computation, visual diagnostics, synthetic data generation, disclosure-risk evaluation, and interactive Shiny UI).
-
 ```markdown
 # GGG-Synthesizer
 
