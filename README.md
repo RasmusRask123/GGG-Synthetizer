@@ -1,6 +1,3 @@
----
-
-```markdown
 # GGG-Synthesizer
 
 The GGG-Synthesizer is an R Shiny application that generates multivariate synthetic data from a Gaussian likelihood with a Gaussian–Inverse-Wishart (GIW) prior. The app computes the posterior parameters in closed form, simulates synthetic datasets, and provides analytical disclosure-risk outputs under the “all-but-one” identification framework.
@@ -39,7 +36,7 @@ Implements the closed-form identification-risk expression derived for the GGG fr
 
 ## File structure
 
-```
+
 
 GGG-Synthetizer/
 ├─ app.R                  # Full Shiny application
