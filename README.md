@@ -19,11 +19,9 @@ the app computes the conjugate posterior:
 Posterior parameters are calculated analytically and displayed interactively.
 
 ### 2. Synthetic data generation
-
 * Users choose the number of synthetic datasets $n_k$
 * Users choose the number of posterior draws $n_\theta$
-* Synthetic datasets are drawn from the posterior predictive multivariate Student-t distribution
-* All generated datasets can be downloaded
+
 
 ### 3. Disclosure-risk evaluation
 
