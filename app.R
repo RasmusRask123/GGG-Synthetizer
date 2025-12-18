@@ -24,7 +24,8 @@ posterior_params <- function(X_data, mu0, kappa0, nu0, lambda0, p_df = 2) {
   kappa_n  <- kappa0 + n
   nu_n     <- nu0 + n
   mu_n     <- (kappa0 / (kappa0 + n)) * mu0 + (n / (kappa0 + n)) * xbar
-  S        <- t(X_data - xbar) %*% (X_data - xbar)
+  
+  S        <- crossprod(scale(X_data, scale = FALSE))
   Lambda_n <- lambda0 + S + ((kappa0 * n) / (kappa_n)) * tcrossprod(xbar - mu0)
   df0      <- nu_n - p_df + 1
   Sigma_t0 <- ((kappa_n + 1) / (kappa_n * (nu_n - p_df + 1))) * Lambda_n
@@ -48,8 +49,8 @@ Initial_value_fkt <- function(Z_data_list, mu0, kappa0) {
 Updated_Z_parameters <- function(mu_n, kappa_n, nu_n, Lambda_n, Z_data) {
   m <- nrow(Z_data)
   zbar <- colMeans(Z_data)
-  S_Z <- t(Z_data - zbar) %*% (Z_data - zbar)
   
+  S_Z        <- crossprod(scale(Z_data, scale = FALSE))
   kappa_npp <- kappa_n + m
   nu_npp    <- nu_n + m
   
